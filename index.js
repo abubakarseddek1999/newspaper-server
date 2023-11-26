@@ -131,6 +131,26 @@ async function run() {
       const result = await userCollection.deleteOne(query);
       res.send(result);
     })
+    // menu related apis
+
+    app.get('/menu', async (req, res) => {
+      const result = await menuCollection.find().toArray();
+      res.send(result);
+    })
+
+    app.get('/menu/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: (id) }
+      const result = await menuCollection.findOne(query);
+      res.send(result);
+    })
+
+    app.post('/menu', verifyToken, verifyAdmin, async (req, res) => {
+      const item = req.body;
+      const result = await menuCollection.insertOne(item);
+      res.send(result);
+    })
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
