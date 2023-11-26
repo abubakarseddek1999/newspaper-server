@@ -131,7 +131,7 @@ async function run() {
       const result = await userCollection.deleteOne(query);
       res.send(result);
     })
-    // menu related apis
+    // Article related apis
 
     app.get('/menu', async (req, res) => {
       const result = await menuCollection.find().toArray();
@@ -149,6 +149,26 @@ async function run() {
       const item = req.body;
       const result = await menuCollection.insertOne(item);
       res.send(result);
+    })
+
+    // update menu
+    app.patch('/menu/:id', async (req, res) => {
+      const item = req.body;
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) }
+      console.log(filter);
+      const updatedDoc = {
+        $set: {
+          title: item.title,
+          category: item.category,
+          publisher_name: item.publisher_name,
+          content: item.content,
+          image: item.image
+        }
+      }
+      // console.log(updatedDoc);
+      const result = await menuCollection.updateOne(filter, updatedDoc)
+      res.send(result)
     })
 
     // Send a ping to confirm a successful connection
