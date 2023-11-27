@@ -35,6 +35,7 @@ async function run() {
     const reviewCollection = client.db("bistrodb").collection("reviews");
     const cartCollection = client.db("bistrodb").collection("carts");
     const paymentCollection = client.db("bistrodb").collection("payments");
+    const PublisherCollection = client.db("bistrodb").collection("publisher");
 
     // jwt related api
     app.post('/jwt', async (req, res) => {
@@ -44,6 +45,7 @@ async function run() {
       });
       res.send({ token });
     })
+
     // middlewares
     const verifyToken = (req, res, next) => {
       console.log('inside verify token', req.headers.authorization);
@@ -131,12 +133,18 @@ async function run() {
       const result = await userCollection.deleteOne(query);
       res.send(result);
     })
-    // Article related apis
+
+    // menu related apis
 
     app.get('/menu', async (req, res) => {
       const result = await menuCollection.find().toArray();
       res.send(result);
     })
+    app.get('/publisher', async (req, res) => {
+      const result = await PublisherCollection.find().toArray();
+      res.send(result);
+    })
+   
 
     app.get('/menu/:id', async (req, res) => {
       const id = req.params.id;
@@ -150,7 +158,11 @@ async function run() {
       const result = await menuCollection.insertOne(item);
       res.send(result);
     })
-
+    app.post('/publisher', verifyToken, verifyAdmin, async (req, res) => {
+      const item = req.body;
+      const result = await PublisherCollection.insertOne(item);
+      res.send(result);
+    })
     // update menu
     app.patch('/menu/:id', async (req, res) => {
       const item = req.body;
@@ -170,6 +182,7 @@ async function run() {
       const result = await menuCollection.updateOne(filter, updatedDoc)
       res.send(result)
     })
+
     app.delete('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
@@ -180,6 +193,96 @@ async function run() {
     app.get('/reviews', async (req, res) => {
       const result = await reviewCollection.find().toArray();
       res.send(result);
+    })
+
+    // carts collection
+    app.get('/carts', async (req, res) => {
+      const email = req.query.email;
+      const query = { email: email };
+      const result = await cartCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post('/carts', async (req, res) => {
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
+      res.send(result);
+    })
+
+    app.delete('/carts/:id', async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) }
+      const result = await cartCollection.deleteOne(query);
+      res.send(result);
+    })
+
+    // payment intent
+    app.post('/create-payment-intent', async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      console.log(amount, 'amount inside the intent')
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      });
+
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    });
+    app.get('/payments/:email',verifyToken, async (req, res)=>{
+      const query ={ email: req.params.email}
+      if(req.params.email !== req.decoded.email){
+        return res.status(403).send({message: 'forbidden access'});
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
+
+    })
+    app.post('/payments', async (req, res) => {
+      const payment = req.body;
+      const paymentResult =await paymentCollection.insertOne(payment);
+      // carefully delete each item from the cart
+      console.log('payment info', payment);
+      const query ={_id: {
+        $in: payment.cartIds.map(id => new ObjectId(id))
+      }};
+      const deleteResult = await cartCollection.deleteMany(query);
+      res.send({paymentResult, deleteResult});
+
+    })
+
+    // analytics
+    app.get('/admin-stats',verifyToken,verifyAdmin, async(req,res)=>{
+      const users = await userCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+
+      // this is not best way
+      // const payments = await paymentCollection.find().toArray();
+      // const revenue = payments.reduce((total, payment) => total + payment.price, 0);
+
+      const result = await paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray();
+
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+      res.send({
+        users,
+        menuItems,
+        orders,
+        revenue
+      })
     })
 
     // Send a ping to confirm a successful connection
@@ -195,9 +298,9 @@ run().catch(console.dir);
 
 
 app.get('/', (req, res) => {
-  res.send('boss is sitting')
+  res.send('paper is sitting')
 })
 
 app.listen(port, () => {
-  console.log(`Bistro boss is sitting on port ${port}`);
+  console.log(`NewsPaper is sitting on port ${port}`);
 })
