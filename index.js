@@ -33,7 +33,6 @@ async function run() {
     const menuCollection = client.db("bistrodb").collection("menu");
     const userCollection = client.db("bistrodb").collection("users");
     const reviewCollection = client.db("bistrodb").collection("reviews");
-    const cartCollection = client.db("bistrodb").collection("carts");
     const paymentCollection = client.db("bistrodb").collection("payments");
     const PublisherCollection = client.db("bistrodb").collection("publisher");
 
@@ -101,6 +100,7 @@ async function run() {
 
 
     })
+
     app.post('/users', async (req, res) => {
       const user = req.body;
       // insert email if user does not exists:
@@ -153,7 +153,7 @@ async function run() {
       res.send(result);
     })
 
-    app.post('/menu', verifyToken, verifyAdmin, async (req, res) => {
+    app.post('/menu', verifyToken, async (req, res) => {
       const item = req.body;
       const result = await menuCollection.insertOne(item);
       res.send(result);
@@ -183,7 +183,23 @@ async function run() {
       res.send(result)
     })
 
-    app.delete('/menu/:id', verifyToken, verifyAdmin, async (req, res) => {
+    // update menu item status
+    app.patch('/menuStatus/:id', async (req, res) => {
+      const item = req.body;
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) }
+      console.log(filter);
+      const updatedDoc = {
+        $set: {
+        status:item.status
+        }
+      }
+      // console.log(updatedDoc);
+      const result = await menuCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
+    app.delete('/menu/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) }
       const result = await menuCollection.deleteOne(query)
@@ -192,27 +208,6 @@ async function run() {
 
     app.get('/reviews', async (req, res) => {
       const result = await reviewCollection.find().toArray();
-      res.send(result);
-    })
-
-    // carts collection
-    app.get('/carts', async (req, res) => {
-      const email = req.query.email;
-      const query = { email: email };
-      const result = await cartCollection.find(query).toArray();
-      res.send(result);
-    });
-
-    app.post('/carts', async (req, res) => {
-      const cartItem = req.body;
-      const result = await cartCollection.insertOne(cartItem);
-      res.send(result);
-    })
-
-    app.delete('/carts/:id', async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) }
-      const result = await cartCollection.deleteOne(query);
       res.send(result);
     })
 
@@ -232,58 +227,7 @@ async function run() {
         clientSecret: paymentIntent.client_secret
       })
     });
-    app.get('/payments/:email',verifyToken, async (req, res)=>{
-      const query ={ email: req.params.email}
-      if(req.params.email !== req.decoded.email){
-        return res.status(403).send({message: 'forbidden access'});
-      }
-      const result = await paymentCollection.find(query).toArray();
-      res.send(result);
 
-    })
-    app.post('/payments', async (req, res) => {
-      const payment = req.body;
-      const paymentResult =await paymentCollection.insertOne(payment);
-      // carefully delete each item from the cart
-      console.log('payment info', payment);
-      const query ={_id: {
-        $in: payment.cartIds.map(id => new ObjectId(id))
-      }};
-      const deleteResult = await cartCollection.deleteMany(query);
-      res.send({paymentResult, deleteResult});
-
-    })
-
-    // analytics
-    app.get('/admin-stats',verifyToken,verifyAdmin, async(req,res)=>{
-      const users = await userCollection.estimatedDocumentCount();
-      const menuItems = await menuCollection.estimatedDocumentCount();
-      const orders = await paymentCollection.estimatedDocumentCount();
-
-      // this is not best way
-      // const payments = await paymentCollection.find().toArray();
-      // const revenue = payments.reduce((total, payment) => total + payment.price, 0);
-
-      const result = await paymentCollection.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalRevenue: {
-              $sum: '$price'
-            }
-          }
-        }
-      ]).toArray();
-
-      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
-
-      res.send({
-        users,
-        menuItems,
-        orders,
-        revenue
-      })
-    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
